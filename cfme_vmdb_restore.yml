@@ -1,0 +1,68 @@
+ - hosts: all
+   vars_prompt: 
+    - name: "dumpfile"
+      prompt: "Enter the Database Dump File Full Path"
+      private: no
+   tasks:
+   - name: Copying the dump file to the remote the appliance
+     copy: 
+      src: "{{ dumpfile }}"
+      dest: /root/vmdb_production_db.dmp
+   - name: installing python postgres packages on the remote host
+     yum:
+      name: "{{ item }}"
+      state: installed
+     with_items:
+      - postgresql-libs
+      - python-psycopg2
+   - name: Stopping evmserverd 
+     service:
+      name: evmserverd
+      state: stopped
+   - name: Dropping vmdb_production database
+     postgresql_db:
+      name: vmdb_production
+      state: absent
+      login_user: root
+   - name: Creating vmdb_production database
+     postgresql_db:
+      name: vmdb_production
+      state: present
+      login_user: root
+   - name: Importing the database
+     shell: 'pg_restore -d vmdb_production  /root/vmdb_production_db.dmp'
+   - shell: 'vmdb; bundle exec tools/fix_auth.rb --v2 --invalid smartvm'
+     args:
+      chdir: /var/www/miq/vmdb
+   - shell: 'mv /var/www/miq/vmdb/GUID{,.bak}'
+   - name: Setting the region number
+     shell: 'psql vmdb_production -c "select region from miq_regions;"'
+     register: region
+   - shell: "echo {{ region.stdout_lines[2] }} > /var/www/miq/vmdb/REGION"
+   - name: Fix DB
+     shell: "bundle exec tools/fix_auth.rb --v2 --invalid bogus"
+     args:
+      chdir: /var/www/miq/vmdb
+   - name: Reset admin password, and setting master to false
+     blockinfile:
+       dest: /root/fix.sh
+       create: yes
+       block: |
+        #!/bin/bash
+        cd /var/www/miq/vmdb
+        bin/rails r "User.find_by_userid('admin').update_attributes(:password => 'smartvm')"
+        psql vmdb_production -c "update miq_servers set is_master='f'"
+       mode: 0755
+   - shell: "/bin/sh /root/fix.sh"
+   - name: starting evmserverd
+     service:
+      name: evmserverd
+      state: started
+   - name: cleaning up script, and database dump file  created by the run book
+     file:
+      dest: /root/{{ item }}
+      state: absent
+     with_items:
+      - fix.sh
+      - vmdb_production_db.dmp
+

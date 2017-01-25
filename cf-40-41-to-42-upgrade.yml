@@ -1,0 +1,131 @@
+ - hosts: all
+   tasks:
+   - name: setting variables
+     shell: "systemctl status rh-postgresql94-postgresql.service"
+     register: post94
+     ignore_errors: true
+   - name: evm var
+     shell: "systemctl status evmserverd"
+     register: evm
+     ignore_errors: true
+   - name: Disable OLD CFME Repos
+     shell: '/usr/sbin/subscription-manager repos --disable="*"'
+   - name: Enable CFME4.2 Repos
+     shell: '/usr/sbin/subscription-manager repos --enable=cf-me-5.7-for-rhel-7-rpms --enable=rhel-server-rhscl-7-rpms --enable=rhel-7-server-rpms'
+
+   - block:
+
+     - name: Backing UP GUID, and REGION
+       copy:
+        remote_src: True
+        src: /var/www/miq/vmdb/GUID
+        dest: /root/GUID.bk
+     - copy:
+        remote_src: True
+        src: /var/www/miq/vmdb/VERSION
+        dest: /root/VERSION.bk
+     - copy:
+        remote_src: True
+        src: /var/www/miq/vmdb/REGION
+        dest: /root/REGION.bk
+     - name: Stopping EVMServer 
+       service:
+        name: evmserverd
+        state: stopped
+     - name: Removing rubyrep
+       shell: "bin/rake evm:dbsync:uninstall"
+       args:
+         chdir: /var/www/miq/vmdb/
+       ignore_errors: true
+     - name: Updating CFME, and the system packages
+       yum:
+        name: '*'
+        state: latest
+     - name: migrating vmdb database
+       shell: "bin/rake db:migrate"
+       args:
+         chdir: /var/www/miq/vmdb/
+     - name: Migrate the Automate Model to the latest version
+       shell: "bin/rake evm:automate:reset"
+       args:
+         chdir: /var/www/miq/vmdb
+     - name: Upgrading PostgreSQL
+       shell: "echo Y|/usr/bin/miq_postgres_upgrade.sh"
+     - name: Updating postgresql config
+       lineinfile:
+        dest: /var/opt/rh/rh-postgresql95/lib/pgsql/data/postgresql.conf
+        backup: yes
+        line: "{{ item }}"
+       with_items:
+        - "max_wal_size = 1GB"
+        - "min_wal_size = 80MB"
+        - "wal_log_hints = on"
+     - name: Replacing pglogical with pglogical,repmgr_funcs
+       replace:
+        dest: /var/opt/rh/rh-postgresql95/lib/pgsql/data/postgresql.conf
+        replace: "shared_preload_libraries = 'pglogical,repmgr_funcs' # MIQ Value (change requires restart)"
+        regexp: "^shared_preload_libraries(.*)$"
+     - name: Disabling checkpoint_segments from postgresql config
+       replace:
+        dest: /var/opt/rh/rh-postgresql95/lib/pgsql/data/postgresql.conf
+        replace: "#checkpoint_segments = 15   # MIQ Value;"
+        regexp: "^checkpoint_segments = 15"
+     - name: CFME Version 
+       shell: "cat /root/VERSION.bk | awk -F'.' '{print $1$2}'"
+       register: version
+     - name: updating pg_ident.conf on CFME4.0
+       lineinfile:
+        dest: /var/opt/rh/rh-postgresql95/lib/pgsql/data/pg_ident.conf
+        backup: yes
+        line: "usermap    postgres    root"
+       when: version.stdout == '55'
+     - name: updating pg_hba.conf
+       lineinfile:
+        dest: /var/opt/rh/rh-postgresql95/lib/pgsql/data/pg_hba.conf
+        backup: yes
+        line: "host  replication  all  all  md5"
+       when: version.stdout == '55'
+     - name: starting postgresql service
+       service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+       with_items:
+       - rh-postgresql95-postgresql
+     when: post94.rc == 0
+   - block:
+     - name: updating none vmdb appliance 
+       yum:
+        name: "*"
+        state: latest
+     - name: starting EVMServer service
+       service:
+        name: evmserverd
+        state: started
+        enabled: yes 
+     when: evm.rc == 0
+ - hosts: all
+   tasks:
+   - name: Setting variables
+     shell: "cat /root/VERSION.bk | awk -F'.' '{print $1$2}'"
+     register: version
+   - block:
+     - name: Checking database schema on CFM4.0
+       shell: "rake evm:db:check_schema"
+       args:
+        chdir: /var/www/miq/vmdb/
+       ignore_errors: true
+     - name: Rearrange the table columns to match the new schema
+       shell: 'rails r tools/fix_column_ordering.rb "{{ item }}"'
+       args:
+        chdir: /var/www/miq/vmdb/
+       with_items:
+        - computer_systems
+        - event_streams
+        - security_contexts
+     - name: start evmserverd
+       service:
+        name: evmserverd
+        state: started
+        enabled: yes
+       when: version.stdout == '55'

@@ -1,0 +1,19 @@
+ - hosts: all
+   tasks:
+   - name: Checking for vdb disk
+     shell: "ls -l /dev/vdb"
+     register: vdb
+     ignore_errors: true
+   - name: Checking for sdb disk
+     shell: "ls -l /dev/sdb"
+     register: sdb
+     ignore_errors: true
+   - name: Configuring CFME Appliance 
+     shell: "appliance_console_cli --host={{ ansible_nodename }} --region={{ region }} --internal --key --force-key --password={{ password }} -b /dev/vdb"
+     when: vdb.rc == 0
+   - name: Configuring CFME Appliance
+     shell: "appliance_console_cli --host={{ ansible_nodename }} --region={{ region }} --internal --key --force-key --password={{ password }} -b /dev/sdb"
+     when: sdb.rc == 0
+   - name: Configuring CFME Appliance
+     shell: "appliance_console_cli --host={{ ansible_nodename }} --region={{ region }} --internal --key --force-key --password={{ password }}"
+     when: vdb.rc == 1 and sdb.rc == 1
