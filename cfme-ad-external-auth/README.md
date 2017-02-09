@@ -1,4 +1,4 @@
-Added By "Saif Ali" Red Hat
+Update var.yml with the required variables
 
 Ansible playbook to join CloudForms to Microsoft Active Director.
 
