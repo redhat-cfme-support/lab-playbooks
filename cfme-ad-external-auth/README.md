@@ -1,4 +1,4 @@
-This Ansible playbook joining Red Hat CloudForms Applaince to Microsoft Active Directory Domain
+This Ansible playbook joining Red Hat CloudForms Appliance to Microsoft Active Directory Domain
 
 Before running the playbook ensure var.yml updated with the required variables.
 
