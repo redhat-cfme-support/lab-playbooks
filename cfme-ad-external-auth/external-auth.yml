@@ -17,6 +17,7 @@
       dest: /etc/hosts
       line: "{{ domainip }} {{ domain }}"
       backup: yes
+     ignore_errors: yes
    - name: joining CFME to the domain
      shell: 'echo "{{ passwd }}"| realm join "{{ domain }}" -U "{{ domainuser }}"'
    - name: updating sssd to get ldap users attributes from AD domain
