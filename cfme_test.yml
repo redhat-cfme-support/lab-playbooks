@@ -1,4 +1,4 @@
 - hosts: all
   tasks:
   - name: Testing CFME 5.0
-    shell: 'echo "{{ vars }}" >> /tmp/ansible.txt'
+    shell: 'echo "{{ name }}" >> /tmp/ansible.txt'
