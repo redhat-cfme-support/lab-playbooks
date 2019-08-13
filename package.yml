@@ -1,0 +1,16 @@
+ - hosts: all
+   tasks:
+   #- name: Set the Hostname
+     #hostname:
+     # name: "{{ hostname }}"
+   - name: Register The system to RHN
+     redhat_subscription:
+      username: "{{ rhnusername }}"
+      password: "{{ rhnpassword }}"
+      pool: "{{ rhnpool }}"
+
+   - name: Group Packages Install
+     yum:
+      disablerepo: '*'
+      enablerepo: rhel-7-server-rpms
+      name: "{{ package }}"
