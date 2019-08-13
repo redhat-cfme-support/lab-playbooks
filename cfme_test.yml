@@ -1,4 +1,4 @@
 - hosts: all
   tasks:
   - name: Testing CFME 5.0
-    shell: "echo run"
+    shell: "echo test >> /tmp/ansible.txt"
